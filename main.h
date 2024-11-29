@@ -38,6 +38,6 @@ wchar_t wcAppName[] = L"Win32DialogProject";
 
 #define MAXITEMTXT 256
 
-#define IDT_TIMER	5555
-#define IDT_TIMERU	6666
+#define IDT_MICTIMER	5555
+#define IDT_MONITORTIMER	6666
 

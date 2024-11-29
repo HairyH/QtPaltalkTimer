@@ -112,18 +112,19 @@ BOOL CALLBACK DlgMain(HWND hwndDlg, UINT uMsg, WPARAM wParam, LPARAM lParam)
 				return TRUE;
 				case IDC_BUTTON_START:
 				{
-					StartStopMonitoring();
+					//StartStopMonitoring();
+					GetMicUser();
 				}
 				return TRUE;
 			}
 		}
 		case WM_TIMER:
 		{
-			if (wParam == IDT_TIMER)
+			if (wParam == IDT_MICTIMER)
 			{
 				TimerMicTick();
 			}
-			else if (wParam == IDT_TIMERU)
+			else if (wParam == IDT_MONITORTIMER)
 			{
 				MonitorTimerTick();
 			}
@@ -238,7 +239,7 @@ void MicTimerStart(void)
 {
 	SendMessageA(ghClock, WM_SETTEXT, 0, (LPARAM)"00:00");
 	giMicTimerSeconds = 0;
-	SetTimer(ghMain, IDT_TIMER,1000,0);
+	SetTimer(ghMain, IDT_MICTIMER,1000,0);
 }
 
 /// <summary>
@@ -246,7 +247,7 @@ void MicTimerStart(void)
 /// </summary>
 void MicTimerReset(void)
 {
-	KillTimer(ghMain, IDT_TIMER);
+	KillTimer(ghMain, IDT_MICTIMER);
 	giMicTimerSeconds = 0;
 	SendMessageA(ghClock, WM_SETTEXT, 0, (LPARAM)"00:00");
 }
@@ -283,8 +284,8 @@ void TimerMicTick(void)
 /// </summary>
 void MonitorTimerTick(void)
 {
+	GetMicUser();
 	// Failed to get current nick
-	if (!GetMicUser()) return;
 	if (strlen(gszCurrentNick) < 2 && strlen(gszSavedNick) < 2) return;
 	// no change keep going
 	if (strcmp(gszCurrentNick, gszSavedNick) == 0)
@@ -300,8 +301,8 @@ void MonitorTimerTick(void)
 		OutputDebugStringA(szTemp);
 		if (iDrp > 4) // 5 second dropout
 		{
-			MicTimerReset(); //Stop the mic timimg
-			sprintf_s(gszSavedNick, "a"); // Reseting the saved nick
+			MicTimerReset(); //Stop the mic timing
+			sprintf_s(gszSavedNick, "a"); // Reset the saved nick
 			sprintf_s(szTemp, "5 dropouts: %d Reset Mic timer",iDrp);
 			OutputDebugStringA(szTemp);
 			iDrp = 0;
@@ -318,19 +319,19 @@ void MonitorTimerTick(void)
 		GetSystemTime(&sytUtc);
 
 		sprintf_s(szMsg, "Start: %s at: %02d:%02d:%02d UTC", gszCurrentNick, sytUtc.wHour,sytUtc.wMinute,sytUtc.wSecond);
+		OutputDebugStringA(szMsg);
+
 		CopyPaste2Paltalk(szMsg);
 
 		strcpy_s(gszSavedNick, gszCurrentNick);
 	}
 }
 
-	
-
-
 /// <summary>
 /// Gets the current Nick on Mic
 /// </summary>
 /// <returns>When this TRUE the current global </returns>
+/// Get the Mic user
 BOOL GetMicUser(void)
 {
 	if (!ghPtLv) return FALSE;
@@ -340,8 +341,6 @@ BOOL GetMicUser(void)
 	char szOnMicName[MAXITEMTXT] = { '0' };
 	char szOut[MAXITEMTXT] = { '0' };
 	char szMsg[MAXITEMTXT] = { '0' };
-
-	BOOL bReturn = FALSE;
 
 	const int iSizeOfItemNameBuff = MAXITEMTXT * sizeof(char); //wchar_t
 	LPSTR pXItemNameBuff = NULL;
@@ -383,57 +382,36 @@ BOOL GetMicUser(void)
 		lviNick.iSubItem = 0;
 
 		if (!WriteProcessMemory(hProc, pM, &lviNick, sizeof(lviNick), NULL))
-		{
-			bReturn = FALSE;
 			break;
-		}
-		
+
 		if (!SendMessage(ghPtLv, 4171, (WPARAM)iI, (LPARAM)pM))
-		{
-			bReturn = FALSE;
-			break;
-		}
-	
+			break; // 4171
 		if (!ReadProcessMemory(hProc, pM, &lviRead, sizeof(lviRead), NULL))
-		{
-			bReturn = FALSE;
 			break;
-		}
-	
 		iImg = lviRead.iImage;
 
-		if (iImg == 10)
-		{
-			if (!SendMessage(ghPtLv, 4141, (WPARAM)iI, (LPARAM)pM))
-			{
-				bReturn = FALSE;
-				break;
-			}
-		
-			if (!ReadProcessMemory(hProc, lviRead.pszText, &szItemNameRead, sizeof(szItemNameRead), NULL))
-			{
-				bReturn = FALSE;
-				break;
-			}
+		if (!SendMessage(ghPtLv, 4141, (WPARAM)iI, (LPARAM)pM))
+			break; // 4141
 
-			sprintf_s(szMsg, "Image: %d Nickname: %s \n", iImg, szItemNameRead);
-			OutputDebugStringA(szMsg);
+		if (!ReadProcessMemory(hProc, lviRead.pszText, &szItemNameRead, sizeof(szItemNameRead), NULL))
+			break;
 
-			sprintf_s(gszCurrentNick, "%s", szItemNameRead);
-			bReturn = TRUE;
-		}
-				
+		sprintf_s(szMsg, "Image: %d Nickname: %s \n", iImg, szItemNameRead);
+		OutputDebugStringA(szMsg);
+
+
+
+
 	}
-	
+
 	// Cleanup 
 	if (pM != NULL) VirtualFreeEx(hProc, pM, 0, MEM_RELEASE);
 	if (pXItemNameBuff != NULL) VirtualFreeEx(hProc, pXItemNameBuff, 0, MEM_RELEASE);
 
 	CloseHandle(hProc);
 
-	return bReturn;
+	return TRUE;
 }
-
 /// <summary>
 /// Setting up the intervals 
 /// </summary>
@@ -494,13 +472,13 @@ void StartStopMonitoring(void)
 	}
 	if (!gbMonitor)
 	{
-		SetTimer(ghMain, IDT_TIMERU, 1000, NULL);
+		SetTimer(ghMain, IDT_MONITORTIMER, 1000, NULL);
 		gbMonitor = TRUE;
 		SendDlgItemMessageW(ghMain, IDC_BUTTON_START, WM_SETTEXT, 0, (LPARAM)L"Stop");
 	}
 	else
 	{
-		KillTimer(ghMain, IDT_TIMERU);
+		KillTimer(ghMain, IDT_MONITORTIMER);
 		sprintf_s(gszSavedNick, "a");
 		MicTimerReset();
 		gbMonitor = FALSE;
