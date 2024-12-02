@@ -8,7 +8,7 @@ HINSTANCE	hInst = 0;
 HWND		ghMain = 0;
 HWND        ghPtMain = 0;
 HWND		ghEdit = 0;
-HWND		ghList = 0;
+HWND		ghInterval = 0;
 HWND		ghClock = 0;
 
 // Paltalk Handles
@@ -25,10 +25,12 @@ BOOL gbRun = FALSE;
 BOOL gbNStart = FALSE;
 
 int  giSecLimit = 0, giSecTime = 0;
+int giInterval = 30;
 // Nick related globals
 char gszSavedNick[MAX_PATH] = { '0' };
 char gszCurrentNick[MAX_PATH] = { '0' };
 int giDropOut = 4;
+int iMaxNicks = 0;
 
 //Quick Messagebox macro
 #define msga(x) msgba(ghMain,x)
@@ -39,9 +41,8 @@ int giDropOut = 4;
 BOOL CALLBACK DlgMain(HWND hwndDlg, UINT uMsg, WPARAM wParam, LPARAM lParam);
 void GetPaltalkWindows(void);
 BOOL CALLBACK EnumPaltalkWindows(HWND hWnd, LPARAM lParam);
-BOOL InitMinutes(void);
-BOOL InitIntervals(void);
 BOOL InitClockDis(void);
+BOOL InitIntervals(void);
 void OnTimerStart(void);
 void OnTimerReset(void);
 void OnTimerTick(UINT id);
@@ -49,6 +50,7 @@ BOOL GetMicUser(void);
 BOOL SendTextToPaltalk(wchar_t* wsMsg);
 void StartStopMonitoring(void);
 
+/// Main entry point of the app 
 int APIENTRY WinMain(_In_ HINSTANCE hInstance, _In_opt_ HINSTANCE hPrevInstance, _In_ LPSTR lpCmdLine, _In_ int nShowCmd)
 {
 	hInst = hInstance;
@@ -68,9 +70,8 @@ BOOL CALLBACK DlgMain(HWND hwndDlg, UINT uMsg, WPARAM wParam, LPARAM lParam)
 	case WM_INITDIALOG:
 	{
 		ghMain = hwndDlg;
-		ghList = GetDlgItem(hwndDlg, IDC_COMBO_INTERVAL);
+		ghInterval = GetDlgItem(hwndDlg, IDC_COMBO_INTERVAL);
 		ghClock = GetDlgItem(hwndDlg, IDC_EDIT_CLOCK);
-		InitMinutes();
 		InitClockDis();
 		InitIntervals();
 	}
@@ -85,27 +86,38 @@ BOOL CALLBACK DlgMain(HWND hwndDlg, UINT uMsg, WPARAM wParam, LPARAM lParam)
 	{
 		switch (LOWORD(wParam))
 		{
-		case IDCANCEL:
-		{
-			EndDialog(hwndDlg, 0);
-		}
-		return TRUE;
-		case IDOK:
-		{
-			GetPaltalkWindows();
-		}
-		return TRUE;
-		case IDC_BUTTON_START:
-		{
-			//StartStopMonitoring();
-			GetMicUser();
-		}
-		return TRUE;
-		case IDC_CHECK1:
-		{
-			gbNStart = IsDlgButtonChecked(ghMain, IDC_CHECK1);
-		}
-		return TRUE;
+			case IDCANCEL:
+				{
+					EndDialog(hwndDlg, 0);
+				}
+				return TRUE;
+			case IDOK:
+				{
+					GetPaltalkWindows();
+				}
+				return TRUE;
+			case IDC_BUTTON_START:
+				{
+					//StartStopMonitoring();
+					GetMicUser();
+				}
+				return TRUE;
+			case IDC_CHECK1:
+				{
+					gbNStart = IsDlgButtonChecked(ghMain, IDC_CHECK1);
+				}
+			case IDC_COMBO_INTERVAL:
+				{
+					if (HIWORD(wParam) == CBN_SELCHANGE)
+					{
+						int iSel = SendMessage(ghInterval, CB_GETCURSEL, 0, 0);
+						giInterval = SendMessage(ghInterval, CB_GETITEMDATA, (WPARAM)iSel, 0);
+						char szTemp[100] = { 0 };
+						sprintf_s(szTemp, "giInterval = %d \n", giInterval);
+						OutputDebugStringA(szTemp);
+					}
+				}
+				return TRUE;
 		}
 	}
 	case WM_TIMER:
@@ -189,49 +201,31 @@ BOOL CALLBACK EnumPaltalkWindows(HWND hWnd, LPARAM lParam)
 	return TRUE;
 }
 
-/// Initialise Drop down list
-BOOL InitMinutes(void)
-{
-	int iMn = 1, i = 0, nHeight = 0;
-	char sMn[] = "min";
-	char sTemp20[20] = { 0 };
-
-	sprintf_s(sTemp20, 20, "%d min", iMn);
-	SendMessageA(ghList, CB_ADDSTRING, 0, (LPARAM)sTemp20);
-	SendMessageA(ghList, CB_SETITEMDATA, (WPARAM)0, (LPARAM)iMn);
-	iMn++;
-	// 1-10 minutes increment 1
-	for (i = 1; i < 10; i++)
-	{
-		sprintf_s(sTemp20, 20, "%d %s", iMn, sMn);
-		SendMessageA(ghList, CB_ADDSTRING, 0, (LPARAM)sTemp20);
-		SendMessageA(ghList, CB_SETITEMDATA, (WPARAM)i, (LPARAM)iMn);
-		iMn++;
-
-	}
-
-	iMn += 4;
-	// 10-60 increment 5
-	for (i = 10; i < 20; i++)
-	{
-		sprintf_s(sTemp20, 20, "%d %s", iMn, sMn);
-		SendMessageA(ghList, CB_ADDSTRING, 0, (LPARAM)sTemp20);
-		SendMessageA(ghList, CB_SETITEMDATA, (WPARAM)i, (LPARAM)iMn);
-		iMn += 5;
-
-	}
-
-	SendMessageA(ghList, CB_SETCURSEL, (WPARAM)1, 0);
-
-	return TRUE;
-}
-
 /// Initialise Intervals Combo
 BOOL InitIntervals(void)
 {
-	
+	wchar_t wsTemp[256] = { '\0' };
+	BOOL bErr = FALSE;
+	int iIndex = 0;
+	int iSec = 0;
+	int iMin = 0;
+
+	for (int i = 30; i <= 180; i = i + 30)
+	{
+		iMin = i / 60;
+		iSec = i % 60;
+		swprintf_s(wsTemp, L"%d:%02d", iMin, iSec);
+		iIndex = SendMessageW(ghInterval, CB_ADDSTRING, (WPARAM)0, (LPARAM)wsTemp);
+		SendMessageW(ghInterval, CB_SETITEMDATA, (WPARAM)iIndex, (LPARAM)i);
+	}
+
+	SendMessageW(ghInterval, CB_SETCURSEL, (WPARAM)0, (LPARAM)0);
+	giInterval = SendMessageW(ghInterval, CB_GETITEMDATA, (WPARAM)0, (LPARAM)0);
 	return TRUE;
 }
+
+
+
 
 /// Initialise the Clock Display Window
 BOOL InitClockDis(void)
@@ -304,6 +298,13 @@ BOOL GetMicUser(void)
 	if (pXItemNameBuff == NULL) return FALSE;
 
 	iNicks = ListView_GetItemCount(ghPtLv);
+	if (iMaxNicks < iNicks)
+	{
+		iMaxNicks = iNicks;
+		char szTemp[100] = { 0 };
+		sprintf_s(szTemp, "%d", iMaxNicks);
+		SendDlgItemMessageA(ghMain, IDC_EDIT2, WM_SETTEXT, (WPARAM)0, (LPARAM)szTemp);
+	}
 	sprintf_s(szMsg, "Number of nicks: %d \n", iNicks);
 	OutputDebugStringA(szMsg);
 
@@ -330,19 +331,20 @@ BOOL GetMicUser(void)
 		{ 
 			SendMessage(ghPtLv, 4141, (WPARAM)i, (LPARAM)vpMemLvi);    // 4141
 			
-			char szNickname[MAX_PATH]={'0'};
 			ReadProcessMemory(hProc, lviRead.pszText, &gszCurrentNick, sizeof(gszCurrentNick), NULL);
 			bRet = TRUE;
+			break;
 		}
 		else
 		{
 			sprintf_s(gszCurrentNick, "a");
 			bRet = FALSE;
 		}
-		sprintf_s(szMsg, "Index: %d Image: %d Nickname: %s \n", i, iImg, gszCurrentNick);
-		OutputDebugStringA(szMsg);
+		
 	}
 
+	sprintf_s(szMsg, "Image: %d Nickname: %s \n",  iImg, gszCurrentNick);
+	OutputDebugStringA(szMsg);
 	// Cleanup 
 	if (vpMemLvi != NULL) VirtualFreeEx(hProc, vpMemLvi, 0, MEM_RELEASE);
 	if (pXItemNameBuff != NULL) VirtualFreeEx(hProc, pXItemNameBuff, 0, MEM_RELEASE);
