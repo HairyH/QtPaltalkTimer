@@ -42,8 +42,6 @@ wchar_t wcAppName[] = L"Win32DialogProject";
 #define msgba(h,x) MessageBoxA(h,x,szAppName,MB_OK)
 #define msgbw(h,x) MessageBoxW(h,x,wcAppName,MB_OK)
 
-#define MAXITEMTXT 256
-
 #define IDT_MICTIMER	5555
 #define IDT_MONITORTIMER	6666
 
